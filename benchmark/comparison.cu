@@ -214,7 +214,7 @@ int main()
     dim3 block(T); // 128 threads per block
     dim3 grid(B, H, (L + block.x - 1) / block.x);
 
-    global_multihead_attention<<<grid, block>>>(d_Q, d_K, d_V, d_O_2, d_scores_2, B, H, L, D);
+    fused_multihead_attention<<<grid, block>>>(d_Q, d_K, d_V, d_O_2, d_scores_2, B, H, L, D);
 
     cudaMemcpy(h_O_2.get(), d_O_2, bytes, cudaMemcpyDeviceToHost);
 

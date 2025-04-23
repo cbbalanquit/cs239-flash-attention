@@ -14,7 +14,7 @@ void generateMatrix(float *matrix, int n, std::mt19937 &mt)
 
 #define TILE_Q 32
 #define TILE_K 32
-#define TILE_D 8
+#define TILE_D 16
 
 __global__ void flash_attention_kernel(
     const float *__restrict__ Q,
