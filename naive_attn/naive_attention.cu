@@ -6,7 +6,7 @@
 
 void generateMatrix(float *matrix, int n, std::mt19937 &mt)
 {
-    std::uniform_real_distribution<float> dist(1.0f, 100.0f);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
     for (int i = 0; i < n; ++i)
         matrix[i] = dist(mt);
 }
@@ -73,7 +73,7 @@ __global__ void softmax_rows(
     }
 }
 
-___global__ void apply_value_weights(
+__global__ void apply_value_weights(
     const float *__restrict__ softmax, // [B, H, L, L]
     const float *__restrict__ V,       // [B, H, L, D]
     float *__restrict__ output,        // [B, H, L, D]
@@ -129,7 +129,6 @@ int main()
     cudaMemcpy(d_Q, h_Q.get(), bytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_K, h_K.get(), bytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_V, h_V.get(), bytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_O, h_O.get(), bytes, cudaMemcpyHostToDevice);
 
     const int WARP_SIZE = 32;
     dim3 block_1(WARP_SIZE, 8); // 256 threads per block (optimal occupancy)
@@ -141,7 +140,7 @@ int main()
     dim3 grid_2(B, H, (L + T_2 - 1) / T_2);
     softmax_rows<<<grid_2, block_2>>>(d_scores, B, H, L);
 
-    dim3 block_3(WARP_SIZE*2, 8);
+    dim3 block_3(WARP_SIZE * 2, 8);
     dim3 grid_3(B, H, (L + block_3.y - 1) / block_3.y);
     apply_value_weights<<<grid_3, block_3>>>(d_scores, d_V, d_O, B, H, L, D);
 

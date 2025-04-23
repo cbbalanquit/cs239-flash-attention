@@ -6,12 +6,12 @@
 
 void generateMatrix(float *matrix, int n, std::mt19937 &mt)
 {
-    std::uniform_real_distribution<float> dist(1.0f, 100.0f);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
     for (int i = 0; i < n; ++i)
         matrix[i] = dist(mt);
 }
 
-__global__ void global_multihead_attention(
+__global__ void fused_multihead_attention(
     const float *__restrict__ Q,
     const float *__restrict__ K,
     const float *__restrict__ V,
@@ -19,25 +19,25 @@ __global__ void global_multihead_attention(
     float *__restrict__ scores_buffer,
     int B, int H, int L, int D)
 {
-    int batch = blockIdx.x;
-    int head = blockIdx.y;
-    int q_idx = threadIdx.x + blockIdx.z * blockDim.x;
-    if (q_idx >= L)
+    int b = blockIdx.x;
+    int h = blockIdx.y;
+    int q = threadIdx.x + blockIdx.z * blockDim.x;
+    if (q >= L)
         return;
 
     const float scale = 1.0f / sqrtf((float)D);
-    int base_qkv = ((batch * H + head) * L + q_idx) * D;
-    size_t scores_offset = ((size_t(batch) * H + head) * L + q_idx) * L; // space per thread
+    int base_qkv = ((b * H + h) * L + q) * D;
+    size_t scores_offset = ((size_t(b) * H + h) * L + q) * L; // space per thread
     float *scores = &scores_buffer[scores_offset];
 
-    // 1. Compute dot products between Q[q_idx] and all K[k]
+    // 1. Compute dot products between Q[q] and all K[k]
     for (int k = 0; k < L; ++k)
     {
         float score = 0.0f;
         for (int d = 0; d < D; ++d)
         {
             int qd = base_qkv + d;
-            int kd = ((batch * H + head) * L + k) * D + d;
+            int kd = ((b * H + h) * L + k) * D + d;
             score += Q[qd] * K[kd];
         }
         scores[k] = score * scale;
@@ -64,7 +64,7 @@ __global__ void global_multihead_attention(
         float out = 0.0f;
         for (int k = 0; k < L; ++k)
         {
-            int vd = ((batch * H + head) * L + k) * D + d;
+            int vd = ((b * H + h) * L + k) * D + d;
             out += scores[k] * V[vd];
         }
         output[base_qkv + d] = out;
@@ -99,13 +99,12 @@ int main()
     cudaMemcpy(d_Q, h_Q.get(), bytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_K, h_K.get(), bytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_V, h_V.get(), bytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_O, h_O.get(), bytes, cudaMemcpyHostToDevice);
 
     int T = 128;
     dim3 block(T); // 128 threads per block
     dim3 grid(B, H, (L + block.x - 1) / block.x);
 
-    global_multihead_attention<<<grid, block>>>(d_Q, d_K, d_V, d_O, d_scores, B, H, L, D);
+    fused_multihead_attention<<<grid, block>>>(d_Q, d_K, d_V, d_O, d_scores, B, H, L, D);
 
     cudaMemcpy(h_O.get(), d_O, bytes, cudaMemcpyDeviceToHost);
 

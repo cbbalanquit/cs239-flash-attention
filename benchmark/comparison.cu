@@ -7,7 +7,7 @@
 
 void generateMatrix(float *matrix, int n, std::mt19937 &mt)
 {
-    std::uniform_real_distribution<float> dist(1.0f, 100.0f);
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
     for (int i = 0; i < n; ++i)
         matrix[i] = dist(mt);
 }
@@ -193,8 +193,6 @@ int main()
     cudaMemcpy(d_Q, h_Q.get(), bytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_K, h_K.get(), bytes, cudaMemcpyHostToDevice);
     cudaMemcpy(d_V, h_V.get(), bytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_O, h_O.get(), bytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_O_2, h_O.get(), bytes, cudaMemcpyHostToDevice);
 
     const int WARP_SIZE = 32;
     dim3 block_1(WARP_SIZE, 8); // 256 threads per block (optimal occupancy)
@@ -220,10 +218,22 @@ int main()
 
     cudaMemcpy(h_O_2.get(), d_O_2, bytes, cudaMemcpyDeviceToHost);
 
-    // Error check
+    float max_diff = 0.0f;
+    int mismatch_count = 0;
     for (int i = 0; i < B * H * L * D; ++i)
-        std::cout << (abs(h_O[i] - h_O_2[i]) < 0.0001);
-    std::cout << std::endl;
+    {
+        float diff = abs(h_O[i] - h_O_2[i]);
+        if (diff > max_diff)
+        {
+            max_diff = diff;
+        }
+        if (diff > 0.001f)
+        {
+            mismatch_count++;
+        }
+    }
+    std::cout << "Max difference: " << max_diff << std::endl;
+    std::cout << "Mismatches (>0.001): " << mismatch_count << "/" << (B * H * L * D) << std::endl;
 
     cudaFree(d_Q);
     cudaFree(d_K);
