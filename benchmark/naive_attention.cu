@@ -101,7 +101,7 @@ __global__ void apply_value_weights(
     }
 }
 
-int main()
+int main(int argc, char **argv)
 {
     int B = 1, H = 4, L = 32, D = 64;
     
