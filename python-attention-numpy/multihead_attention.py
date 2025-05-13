@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import time
+import os
 
 # Function to compute scaled dot-product attention
 def scaled_dot_product_attention(Q, K, V):
@@ -65,6 +67,139 @@ def visualize_attention(weights, title='Attention Weights', save_path=None):
             print(f"Could not display plot due to: {e}")
             print("Consider providing a save_path to save the visualization to a file.")
 
+# New function to benchmark attention mechanisms with different sequence lengths
+def benchmark_attention_mechanisms(seq_lengths=[512, 1024, 2048, 4096, 8192],
+                                  n_runs=5, 
+                                  batch_size=2, 
+                                  d_model=64, 
+                                  num_heads=8):
+    """
+    Benchmark the performance of attention mechanisms with varying sequence lengths.
+    
+    Args:
+        seq_lengths: List of sequence lengths to test
+        n_runs: Number of runs to average for each test
+        batch_size: Batch size for the input tensors
+        d_model: Dimensionality of the model (must be divisible by num_heads)
+        num_heads: Number of attention heads for multi-head attention
+        
+    Returns:
+        Dictionary containing timing results
+    """
+    print("\nBenchmarking attention mechanisms...")
+    print("====================================")
+    
+    # Ensure d_model is divisible by num_heads
+    assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
+    
+    results = {
+        'seq_lengths': seq_lengths,
+        'single_head_times': [],
+        'multi_head_times': []
+    }
+    
+    for seq_len in seq_lengths:
+        print(f"\nTesting sequence length: {seq_len}")
+        
+        # Single-head attention timing
+        single_head_times = []
+        for run in range(n_runs):
+            # Create random inputs
+            Q = np.random.randn(batch_size, seq_len, d_model)
+            K = np.random.randn(batch_size, seq_len, d_model)
+            V = np.random.randn(batch_size, seq_len, d_model)
+            
+            # Time single-head attention
+            start_time = time.time()
+            _, _ = scaled_dot_product_attention(Q, K, V)
+            end_time = time.time()
+            
+            single_head_times.append(end_time - start_time)
+            
+        avg_single_time = sum(single_head_times) / len(single_head_times)
+        results['single_head_times'].append(avg_single_time)
+        print(f"  Single-head attention: {avg_single_time:.4f} seconds (avg of {n_runs} runs)")
+        
+        # Multi-head attention timing
+        multi_head_times = []
+        for run in range(n_runs):
+            # Create random inputs
+            Q = np.random.randn(batch_size, seq_len, d_model)
+            K = np.random.randn(batch_size, seq_len, d_model)
+            V = np.random.randn(batch_size, seq_len, d_model)
+            
+            # Time multi-head attention
+            start_time = time.time()
+            _ = multi_head_attention(Q, K, V, num_heads)
+            end_time = time.time()
+            
+            multi_head_times.append(end_time - start_time)
+            
+        avg_multi_time = sum(multi_head_times) / len(multi_head_times)
+        results['multi_head_times'].append(avg_multi_time)
+        print(f"  Multi-head attention: {avg_multi_time:.4f} seconds (avg of {n_runs} runs)")
+    
+    return results
+
+# Function to visualize benchmark results
+def visualize_benchmark_results(results, save_path=None):
+    """
+    Visualize the benchmark results.
+    
+    Args:
+        results: Dictionary containing benchmark results
+        save_path: If provided, save the plot to this path
+    """
+    plt.figure(figsize=(12, 8))
+    
+    # Create width-2 subplots
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+    
+    # Plot execution times
+    ax1.plot(results['seq_lengths'], results['single_head_times'], 'o-', label='Single-head Attention')
+    ax1.plot(results['seq_lengths'], results['multi_head_times'], 's-', label='Multi-head Attention')
+    ax1.set_xlabel('Sequence Length')
+    ax1.set_ylabel('Execution Time (seconds)')
+    ax1.set_title('Attention Mechanism Execution Time')
+    ax1.legend()
+    ax1.grid(True)
+    
+    # Plot execution times with log scale for better visualization of growth
+    ax2.plot(results['seq_lengths'], results['single_head_times'], 'o-', label='Single-head Attention')
+    ax2.plot(results['seq_lengths'], results['multi_head_times'], 's-', label='Multi-head Attention')
+    ax2.set_xlabel('Sequence Length')
+    ax2.set_ylabel('Execution Time (seconds)')
+    ax2.set_title('Attention Mechanism Execution Time (Log Scale)')
+    ax2.set_yscale('log')
+    ax2.legend()
+    ax2.grid(True)
+    
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path)
+        print(f"Benchmark results visualization saved to {save_path}")
+        plt.close()
+    else:
+        plt.show()
+
+    # Create a separate plot to show the ratio
+    plt.figure(figsize=(10, 6))
+    ratios = [multi/single for multi, single in zip(results['multi_head_times'], results['single_head_times'])]
+    plt.plot(results['seq_lengths'], ratios, 'o-')
+    plt.xlabel('Sequence Length')
+    plt.ylabel('Ratio (Multi-head / Single-head)')
+    plt.title('Multi-head vs Single-head Attention Time Ratio')
+    plt.grid(True)
+    
+    if save_path:
+        ratio_path = save_path.replace('.png', '_ratio.png')
+        plt.savefig(ratio_path)
+        print(f"Ratio visualization saved to {ratio_path}")
+        plt.close()
+    else:
+        plt.show()
+
 # Function for unit testing with known inputs and expected outputs
 def test_attention_mechanisms():
     """
@@ -74,8 +209,8 @@ def test_attention_mechanisms():
     
     # Test 1: Simple test for scaled dot-product attention
     batch_size = 1
-    seq_len = 16
-    d_model = 8
+    seq_len = 128
+    d_model = 64
     
     # Create simple test inputs where Q[0][0] should attend strongly to K[0][0]
     Q = np.zeros((batch_size, seq_len, d_model))
@@ -197,20 +332,57 @@ def run_practical_example():
     
     return True
 
+# Function to save benchmark results as CSV
+def save_benchmark_results_csv(results, output_path):
+    """
+    Save benchmark results to a CSV file.
+    
+    Args:
+        results: Dictionary containing benchmark results
+        output_path: Path to save the CSV file
+    """
+    import csv
+    
+    with open(output_path, 'w', newline='') as csvfile:
+        fieldnames = ['sequence_length', 'single_head_time', 'multi_head_time', 'ratio']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        writer.writeheader()
+        for i, seq_len in enumerate(results['seq_lengths']):
+            single_time = results['single_head_times'][i]
+            multi_time = results['multi_head_times'][i]
+            ratio = multi_time / single_time
+            
+            writer.writerow({
+                'sequence_length': seq_len,
+                'single_head_time': single_time,
+                'multi_head_time': multi_time,
+                'ratio': ratio
+            })
+    
+    print(f"Benchmark results saved to CSV: {output_path}")
+
 # Main function to run all tests and examples
 def main():
-    print("Testing Multihead Attention Implementation")
-    print("=========================================")
+    print("Testing and Benchmarking Multihead Attention Implementation")
+    print("=========================================================")
     
     # Set up output directory for visualizations
-    import os
     os.makedirs('attention_plots', exist_ok=True)
     
-    # Offer command line options
+    # Parse command line arguments
     import argparse
-    parser = argparse.ArgumentParser(description='Test multihead attention implementation')
+    parser = argparse.ArgumentParser(description='Test and benchmark multihead attention implementation')
     parser.add_argument('--no-vis', action='store_true', help='Disable visualizations completely')
     parser.add_argument('--output-dir', type=str, default='attention_plots', help='Directory to save visualizations')
+    parser.add_argument('--skip-tests', action='store_true', help='Skip the basic tests and go straight to benchmarking')
+    parser.add_argument('--seq-lengths', type=int, nargs='+', default=[512, 1024, 2048, 4096, 8192], 
+                        help='Sequence lengths to benchmark')
+    parser.add_argument('--n-runs', type=int, default=10, help='Number of runs to average for each benchmark')
+    parser.add_argument('--d-model', type=int, default=64, help='Dimensionality of model')
+    parser.add_argument('--num-heads', type=int, default=8, help='Number of attention heads')
+    parser.add_argument('--csv-output', type=str, default='attention_benchmark_results.csv',
+                        help='Filename for CSV output of benchmark results')
     args = parser.parse_args()
     
     # Update visualization paths based on arguments
@@ -230,15 +402,43 @@ def main():
             return original_visualize_attention(weights, title, save_path)
         visualize_attention = wrapped_visualize
     
-    # Run tests
-    test_attention_mechanisms()
+    # Run the basic tests if not skipped
+    if not args.skip_tests:
+        test_attention_mechanisms()
+        run_practical_example()
     
-    # Run practical example
-    run_practical_example()
+    # Run the benchmarks
+    benchmark_results = benchmark_attention_mechanisms(
+        seq_lengths=args.seq_lengths,
+        n_runs=args.n_runs,
+        d_model=args.d_model,
+        num_heads=args.num_heads
+    )
     
-    print("\nAll tests completed!")
+    # Visualize the benchmark results
+    if not args.no_vis:
+        visualize_benchmark_results(benchmark_results, 
+                                   save_path=os.path.join(args.output_dir, 'attention_benchmark_results.png'))
+    
+    # Save benchmark results to CSV
+    csv_path = os.path.join(args.output_dir, args.csv_output)
+    save_benchmark_results_csv(benchmark_results, csv_path)
+    
+    # Print a summary of results
+    print("\nBenchmark Results Summary:")
+    print("=========================")
+    print(f"{'Sequence Length':<15} {'Single-head (s)':<15} {'Multi-head (s)':<15} {'Ratio':<10}")
+    print("-" * 55)
+    for i, seq_len in enumerate(benchmark_results['seq_lengths']):
+        single_time = benchmark_results['single_head_times'][i]
+        multi_time = benchmark_results['multi_head_times'][i]
+        ratio = multi_time / single_time
+        print(f"{seq_len:<15} {single_time:<15.4f} {multi_time:<15.4f} {ratio:<10.2f}")
+    
+    print("\nAll tests and benchmarks completed!")
     if not args.no_vis:
         print(f"Visualizations saved to directory: {args.output_dir}")
+    print(f"CSV results saved to: {csv_path}")
 
 if __name__ == "__main__":
     main()

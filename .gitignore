@@ -1,3 +1,12 @@
 .venv
 .vscode
 *plots*
+
+*.nsys-rep
+*.ncu-rep
+*.sqlite
+
+fused_attn/profiling_reports/
+fused_attn/results/
+
+fused_attn/*.csv
